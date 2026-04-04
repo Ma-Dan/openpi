@@ -52,7 +52,13 @@ def create_trained_policy(
     logging.info("Loading model...")
     if is_pytorch:
         model = train_config.model.load_pytorch(train_config, weight_path)
-        model.paligemma_with_expert.to_bfloat16_for_selected_params("bfloat16")
+        # MPS doesn't fully support bfloat16 operations, use float32 for MPS
+        import torch
+
+        if pytorch_device == "mps" or (pytorch_device is None and torch.backends.mps.is_available()):
+            model.paligemma_with_expert.to_bfloat16_for_selected_params("float32")
+        else:
+            model.paligemma_with_expert.to_bfloat16_for_selected_params("bfloat16")
     else:
         model = train_config.model.load(_model.restore_params(checkpoint_dir / "params", dtype=jnp.bfloat16))
     data_config = train_config.data.create(train_config.assets_dirs, train_config.model)
@@ -68,7 +74,12 @@ def create_trained_policy(
         try:
             import torch
 
-            pytorch_device = "cuda" if torch.cuda.is_available() else "cpu"
+            if torch.cuda.is_available():
+                pytorch_device = "cuda"
+            elif torch.backends.mps.is_available():
+                pytorch_device = "mps"
+            else:
+                pytorch_device = "cpu"
         except ImportError:
             pytorch_device = "cpu"
 

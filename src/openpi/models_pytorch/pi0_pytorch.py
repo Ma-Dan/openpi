@@ -19,6 +19,12 @@ def get_safe_dtype(target_dtype, device_type):
             return torch.float32
         if target_dtype == torch.float64:
             return torch.float64
+    elif device_type == "mps":
+        # MPS doesn't support bfloat16 or float64, use float32 instead
+        if target_dtype == torch.bfloat16:
+            return torch.float32
+        if target_dtype == torch.float64:
+            return torch.float32
     return target_dtype
 
 
@@ -109,8 +115,10 @@ class PI0Pytorch(nn.Module):
             self.action_time_mlp_out = nn.Linear(action_expert_config.width, action_expert_config.width)
 
         torch.set_float32_matmul_precision("high")
-        if config.pytorch_compile_mode is not None:
-            self.sample_actions = torch.compile(self.sample_actions, mode=config.pytorch_compile_mode)
+        # Note: torch.compile has limited support on MPS (Metal) devices
+        # We'll check at runtime and skip compilation if on MPS
+        self._should_compile = config.pytorch_compile_mode is not None
+        self._compile_mode = config.pytorch_compile_mode
 
         # Initialize gradient checkpointing flag
         self.gradient_checkpointing_enabled = False
