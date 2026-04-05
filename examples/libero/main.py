@@ -43,6 +43,7 @@ class Args:
     video_out_path: str = "data/libero/videos"  # Path to save videos
 
     seed: int = 7  # Random Seed (for reproducibility)
+    show_renderer: bool = False  # Show on-screen renderer window
 
 
 def eval_libero(args: Args) -> None:
@@ -82,7 +83,10 @@ def eval_libero(args: Args) -> None:
         initial_states = task_suite.get_task_init_states(task_id)
 
         # Initialize LIBERO environment and task description
-        env, task_description = _get_libero_env(task, LIBERO_ENV_RESOLUTION, args.seed)
+        if args.show_renderer:
+            env, task_description = _get_libero_env_with_renderer(task, LIBERO_ENV_RESOLUTION, args.seed)
+        else:
+            env, task_description = _get_libero_env(task, LIBERO_ENV_RESOLUTION, args.seed)
 
         # Start episodes
         task_episodes, task_successes = 0, 0
@@ -151,6 +155,11 @@ def eval_libero(args: Args) -> None:
 
                     # Execute action in environment
                     obs, reward, done, info = env.step(action.tolist())
+
+                    # Render the environment if using on-screen renderer
+                    if args.show_renderer:
+                        env.env.render()
+
                     if done:
                         task_successes += 1
                         total_successes += 1
@@ -193,6 +202,28 @@ def _get_libero_env(task, resolution, seed):
     env_args = {"bddl_file_name": task_bddl_file, "camera_heights": resolution, "camera_widths": resolution}
     env = OffScreenRenderEnv(**env_args)
     env.seed(seed)  # IMPORTANT: seed seems to affect object positions even when using fixed initial state
+    return env, task_description
+
+
+def _get_libero_env_with_renderer(task, resolution, seed):
+    """Initializes and returns the LIBERO environment with on-screen renderer, along with the task description."""
+    from libero.libero.envs.env_wrapper import ControlEnv
+
+    task_description = task.language
+    task_bddl_file = pathlib.Path(get_libero_path("bddl_files")) / task.problem_folder / task.bddl_file
+
+    env_args = {
+        "bddl_file_name": task_bddl_file,
+        "camera_heights": resolution,
+        "camera_widths": resolution,
+        "has_renderer": True,
+        "has_offscreen_renderer": True,
+        "render_camera": "agentview",
+        "camera_names": ["agentview", "robot0_eye_in_hand"],
+    }
+
+    env = ControlEnv(**env_args)
+    env.seed(seed)
     return env, task_description
 
 
